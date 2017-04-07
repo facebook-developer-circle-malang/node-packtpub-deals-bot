@@ -12,6 +12,7 @@ time.tzset('Asia/Jakarta');
 Date = time.Date; // eslint-disable-line
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const PACKTPUB_URL = 'https://www.packtpub.com/packt/offers/free-learning';
 
 const entities = new Entities();
 const packtClient = new Packt.Client();
@@ -34,9 +35,11 @@ const logger = new winston.Logger({
 });
 
 job.hour = 15;
+job.minute = 0;
+job.second = 0;
 
 const constructMessage = (book) => {
-  const title = `<b>${entities.decode(book.bookTitle)}</b>`;
+  const title = `<a href="${PACKTPUB_URL}">${entities.decode(book.bookTitle)}</a>`;
   const summary = entities.decode(book.bookSummary);
 
   return 'Today\'s Packtpub Free Learning Book: \n' + title + '\n\n' + summary; // eslint-disable-line
@@ -48,12 +51,21 @@ bot.onText(/\/start/, (msg) => {
   logger.info('Incoming /start command', msg);
 
   const isGroup = R.pathEq(['chat', 'type'], 'group');
+  const isPrivate = R.pathEq(['chat', 'type'], 'private');
   const groupHandler = body => ({
     id: body.chat.id,
     name: body.chat.title,
+    type: 'group',
+  });
+  const privateHandler = body => ({
+    id: body.chat.id,
+    name: `${body.chat.first_name} ${body.chat.last_name}`,
+    username: body.chat.username,
+    type: 'private',
   });
   const groupData = R.cond([
     [body => R.equals(isGroup(body), true), groupHandler],
+    [body => R.equals(isPrivate(body), true), privateHandler],
     [R.T, body => false],
   ])(msg);
 
@@ -102,9 +114,13 @@ schedule.scheduleJob(job, () => {
           bot
             .sendMessage(group.id, constructMessage(book), {
               parse_mode: 'HTML',
+              disable_web_page_preview: true,
             })
             .then(() => {
               bot.sendPhoto(group.id, encodeImageUrl(book.bookImage));
+            })
+            .then(() => {
+              logger.info('worker finished with book detail', book);
             });
         });
     });
